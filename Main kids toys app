@@ -1,0 +1,164 @@
+import React, { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import {
+  getAuth,
+  onAuthStateChanged,
+  signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+} from 'firebase/auth';
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  orderBy,
+} from 'firebase/firestore';
+
+// Firebase Config (Replace with your own config or .env variables)
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
+
+export default function KidsStoreApp() {
+  const [user, setUser] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    price: '',
+    imageUrl: '',
+    category: 'Toys',
+    age: '2-4',
+  });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => setUser(user));
+    fetchProducts();
+    return () => unsubscribe();
+  }, []);
+
+  const fetchProducts = async () => {
+    const q = query(collection(db, 'products'), orderBy('name'));
+    const snapshot = await getDocs(q);
+    const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setProducts(list);
+  };
+
+  const handleLogin = async (email, password) => {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleSignup = async (email, password) => {
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleLogout = () => signOut(auth);
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!user) return alert("You must be logged in to add a product.");
+    try {
+      await addDoc(collection(db, 'products'), {
+        ...formData,
+        user: user.email
+      });
+      setFormData({ name: '', price: '', imageUrl: '', category: 'Toys', age: '2-4' });
+      setShowForm(false);
+      fetchProducts();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="p-4 max-w-screen-md mx-auto">
+      <h1 className="text-3xl font-bold mb-4">Kids Toys & Clothes Store</h1>
+
+      {!user ? (
+        <div className="space-y-4">
+          <button className="bg-red-500 text-white p-2 rounded" onClick={handleGoogleLogin}>Login with Google</button>
+          <div>
+            <h2 className="font-semibold">Email Login</h2>
+            <input type="email" placeholder="Email" id="email" className="border p-1" />
+            <input type="password" placeholder="Password" id="pass" className="border p-1 ml-2" />
+            <button className="bg-blue-500 text-white p-1 ml-2" onClick={() => handleLogin(email.value, pass.value)}>Login</button>
+            <button className="bg-green-500 text-white p-1 ml-2" onClick={() => handleSignup(email.value, pass.value)}>Signup</button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <p className="mb-2">Welcome, {user.email} <button className="text-sm underline text-blue-500" onClick={handleLogout}>Logout</button></p>
+
+          <button className="bg-purple-500 text-white p-2 rounded mb-4" onClick={() => setShowForm(!showForm)}>
+            {showForm ? "Cancel" : "Add Product"}
+          </button>
+
+          {showForm && (
+            <form className="space-y-2 mb-4" onSubmit={handleSubmit}>
+              <input name="name" placeholder="Product Name" value={formData.name} onChange={handleChange} className="border w-full p-1" required />
+              <input name="price" placeholder="Price" value={formData.price} onChange={handleChange} className="border w-full p-1" required />
+              <input name="imageUrl" placeholder="Image URL" value={formData.imageUrl} onChange={handleChange} className="border w-full p-1" required />
+              <select name="category" value={formData.category} onChange={handleChange} className="border w-full p-1">
+                <option value="Toys">Toys</option>
+                <option value="Clothes">Clothes</option>
+              </select>
+              <select name="age" value={formData.age} onChange={handleChange} className="border w-full p-1">
+                <option value="2-4">2-4 years</option>
+                <option value="4-6">4-6 years</option>
+                <option value="6-8">6-8 years</option>
+              </select>
+              <button type="submit" className="bg-green-600 text-white p-2 w-full">Submit Product</button>
+            </form>
+          )}
+
+          <h2 className="text-xl font-semibold mb-2">Available Products</h2>
+          <div className="grid grid-cols-2 gap-4">
+            {products.map((p) => (
+              <div key={p.id} className="border p-2 rounded">
+                <img src={p.imageUrl} alt={p.name} className="h-32 w-full object-cover rounded" />
+                <p className="font-bold">{p.name}</p>
+                <p>₹{p.price}</p>
+                <p className="text-xs text-gray-600">{p.category} - {p.age}</p>
+                <p className="text-xs italic">Added by: {p.user}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
